@@ -1,0 +1,319 @@
+options {
+  IGNORE_CASE = true;
+  STATIC = false;
+}
+
+PARSER_BEGIN(Gramatica)
+/** Analizador de expresiones aritmeticas sencillas. */
+package Analizador; 
+import Nodos.Temporal;
+import Nodos.NodoAritmetico;
+import Nodos.NodoLogico;
+import Nodos.NodoIf;
+import Nodos.NodoWhile;
+import java.util.LinkedList;
+import java.util.Arrays;
+
+public class Gramatica {
+
+    String codigoSalida = "";
+    int contadorTemporales = 1;
+    int contadorEtiquetas = 1;
+    NodoAritmetico exp;
+}
+PARSER_END(Gramatica)
+
+/** Lexico */
+SKIP : {
+      " "
+    | "\t"
+    | "\r"
+    | "\n"
+}
+
+TOKEN : {
+      <NUMERO: (["0"-"9"])+>
+    | <DECIMAL: (["0"-"9"])+"."(["0"-"9"])+>
+    | <EVALUAR: "Evaluar">
+    | <IF: "if">
+    | <ELSE: "else">
+    | <CONDICION: "Condicion">
+    | <WHILE: "while">
+    | <DO: "do">
+    | <PCOMA: ";">
+    | <PARENI: "(">
+    | <PAREND: ")">
+    | <CORI: "[">
+    | <CORD: "]">
+    | <LLAI: "{">
+    | <LLAD: "}">
+    | <MAS: "+">
+    | <MENOS: "-">
+    | <POR: "*">
+    | <DIV: "/">
+    | <MENOR: "<">
+    | <MAYOR: ">">
+    | <IGUAL: "==">
+    | <DESIGUAL: "!=">
+    | <MENORIGUAL: "<=">
+    | <MAYORIGUAL: ">=">
+    | <OR: "OR">
+    | <AND: "AND">
+    | <NOT: "NOT">
+}
+/** Fin Lexico */
+
+/** Producción inicial 
+    Analizar -> Instrucciones() EOF
+*/
+
+void Analizar() :
+{String s;}
+{
+  s = Instrucciones() {System.out.println(s);} <EOF>
+}
+
+/** Instrucciones -> (Instruccion())+ */
+
+String Instrucciones() :
+{String i = "";
+String concatenar = "";}
+{
+  (i = Instruccion() {concatenar = concatenar + i;} )+ 
+  { 
+    return concatenar;}
+}
+
+/** Instruccion -> evaluar Expresion() ; 
+                | Condicion Condition();
+                | Si()
+                | While()
+                | Do() ;
+*/
+String Instruccion() :
+{NodoAritmetico e;
+NodoLogico c;
+NodoIf i;
+NodoWhile w;
+String s = "";}
+{
+    <EVALUAR>  e=Expresion()  <PCOMA> {return e.getCodigo();}
+    |
+    <CONDICION> c=Condition() <PCOMA> {return c.getCodigo();}
+    |
+    i=Si() {return i.getInicio() + i.getFin();}
+    |
+    w=While() {return w.getCodigo();}
+    |
+    w=Do() <PCOMA> {return w.getCodigo();} 
+}
+
+
+/** While -> DO { Instrucciones() } WHILE ( Condition() ) 
+*/
+
+NodoWhile Do() :
+{NodoLogico e;
+NodoWhile i;
+String s;}
+{
+     <DO> <LLAI> s = Instrucciones() <LLAD> <WHILE> <PARENI> e=Condition() <PAREND>{
+        i = new NodoWhile(e.getVerdades().toString().substring(1, e.getVerdades().toString().length()-1) + ":\n" + s
+        + e.getCodigo() + e.getMentiras().toString().substring(1, e.getMentiras().toString().length()-1) + ":\n" );}
+    
+    {   
+        return i;
+    }
+}
+
+/** While -> WHILE ( Condition() ) { Instrucciones() }
+*/
+
+NodoWhile While() :
+{NodoLogico e;
+NodoWhile i;
+String s;}
+{
+    <WHILE> <PARENI> e=Condition() <PAREND> <LLAI> s = Instrucciones() <LLAD> {
+        i = new NodoWhile("L" + contadorEtiquetas + ":\n" + e.getCodigo() + e.getVerdades().toString().substring(1, e.getVerdades().toString().length()-1) + ":\n" + s
+        + "go to L" + contadorEtiquetas++ + "\n" + e.getMentiras().toString().substring(1, e.getMentiras().toString().length()-1) + ":\n" );}
+    
+    {   
+        return i;
+    }
+}
+
+/** Si -> IF ( Condition() ) { Instrucciones() }
+        ( ELSE IF ( Condition() ) { Instrucciones() })*
+        ( ELSE { Instrucciones() } )?
+*/
+
+NodoIf Si() :
+{NodoLogico e;
+NodoIf i;
+String s;
+LinkedList<String> etiquetasSalida = new LinkedList<String>();
+Boolean banderaElse = true;}
+{
+    <IF> <PARENI> e=Condition() <PAREND> <LLAI> s = Instrucciones() <LLAD> {
+        i = new NodoIf(e.getCodigo() + e.getVerdades().toString().substring(1, e.getVerdades().toString().length()-1) + ":\n" + s
+        , e.getMentiras().toString().substring(1, e.getMentiras().toString().length()-1) + ":\n" );}
+
+    ( LOOKAHEAD(2) <ELSE> <IF> <PARENI> { etiquetasSalida.add("L" + contadorEtiquetas++); } e=Condition() <PAREND> <LLAI> s = Instrucciones() <LLAD>{ 
+        
+        i = new NodoIf(i.getInicio() + "go to " + etiquetasSalida.getLast() + "\n" +i.getFin() + e.getCodigo() + e.getVerdades().toString().substring(1, e.getVerdades().toString().length()-1) + ":\n" + s
+            ,e.getMentiras().toString().substring(1, e.getMentiras().toString().length()-1) + ":\n" );
+    })* 
+
+    (<ELSE> <LLAI> s = Instrucciones() <LLAD>{ etiquetasSalida.add("L" + contadorEtiquetas);
+        i = new NodoIf(i.getInicio() + "go to L" + contadorEtiquetas++ + "\n" + i.getFin(), s);
+        banderaElse = false;
+    })?
+
+    {   
+        if(etiquetasSalida.size() != 0){
+            if(banderaElse){
+                etiquetasSalida.add("L" + contadorEtiquetas++);
+                i = new NodoIf(i.getInicio() + "go to " + etiquetasSalida.getLast() + "\n", i.getFin());
+            }
+
+            i = new NodoIf(i.getInicio() + i.getFin(), etiquetasSalida.toString().substring(1, etiquetasSalida.toString().length()-1) + ":\n");
+        }
+
+        return i;
+    }
+}
+
+/** Condition -> CondicionAnd (OR CondicionAnd)*
+*/
+
+NodoLogico Condition() :
+{NodoLogico e, e1;}
+{
+    e=CondicionAnd()(
+        <OR> e1=CondicionAnd() { LinkedList<String> listaPivote = new LinkedList<String>(e.getVerdades());
+            listaPivote.addAll(e1.getVerdades());
+            e = new NodoLogico(e.getCodigo() + e.getMentiras().toString().substring(1, e.getMentiras().toString().length()-1) + ":\n" + e1.getCodigo(), listaPivote, e1.getMentiras());}
+    )*
+    {return e;}
+}
+
+/** CondicionAnd -> CondicionUnaria (AND CondicionUnaria)*
+*/
+
+NodoLogico CondicionAnd() :
+{NodoLogico e, e1;}
+{
+    e=CondicionUnaria()( 
+        <AND> e1=CondicionUnaria() { 
+            LinkedList<String> listaPivote = new LinkedList<String>(e.getMentiras());
+            listaPivote.addAll(e1.getMentiras());
+            e = new NodoLogico(e.getCodigo() + e.getVerdades().toString().substring(1, e.getVerdades().toString().length()-1) + ":\n" + e1.getCodigo(), e1.getVerdades(), listaPivote);}
+    )*
+    {return e;}
+}
+
+/** CondicionUnaria -> NOT CondicionUnaria
+                    | Relacionales
+*/
+
+NodoLogico CondicionUnaria() :
+{NodoLogico e;}
+{
+    <NOT> e=CondicionUnaria() { LinkedList<String> listaPivote = new LinkedList<String>(e.getVerdades());
+        return new NodoLogico (e.getCodigo(), e.getMentiras(), listaPivote);
+    }
+    |
+    e=Relacionales() {return e;}
+}
+
+/** Relacionales -> NUMERO MAYOR NUMERO
+              |  NUMERO MENOR NUMERO
+              |  NUMERO IGUAL NUMERO
+              |  NUMERO DESIGUAL NUMERO
+              |  NUMERO MAYORIGUAL NUMERO
+              |  NUMERO MENORIGUAL NUMERO
+*/
+
+NodoLogico Relacionales() :
+{NodoLogico e;
+String primerNumero;}
+{
+    <NUMERO> {primerNumero = token.image;}(
+        <MAYOR> <NUMERO>  {return new NodoLogico("if " + primerNumero + " > " + token.image + " go to L" + contadorEtiquetas++ + "\n" + "go to L"+ contadorEtiquetas-- + "\n", new LinkedList<String>(Arrays.asList("L" + contadorEtiquetas++)), new LinkedList<String>(Arrays.asList("L" + contadorEtiquetas++)));}
+        |
+        <MENOR> <NUMERO>  {return new NodoLogico("if " + primerNumero + " < " + token.image + " go to L" + contadorEtiquetas++ + "\n" + "go to L"+ contadorEtiquetas-- + "\n", new LinkedList<String>(Arrays.asList("L" + contadorEtiquetas++)), new LinkedList<String>(Arrays.asList("L" + contadorEtiquetas++)));}
+        |
+        <IGUAL> <NUMERO>  {return new NodoLogico("if " + primerNumero + " == " + token.image + " go to L" + contadorEtiquetas++ + "\n" + "go to L"+ contadorEtiquetas-- + "\n", new LinkedList<String>(Arrays.asList("L" + contadorEtiquetas++)), new LinkedList<String>(Arrays.asList("L" + contadorEtiquetas++)));}
+        |
+        <DESIGUAL> <NUMERO>  {return new NodoLogico("if " + primerNumero + " != " + token.image + " go to L" + contadorEtiquetas++ + "\n" + "go to L"+ contadorEtiquetas-- + "\n", new LinkedList<String>(Arrays.asList("L" + contadorEtiquetas++)), new LinkedList<String>(Arrays.asList("L" + contadorEtiquetas++)));}
+        |
+        <MAYORIGUAL> <NUMERO>  {return new NodoLogico("if " + primerNumero + " >= " + token.image + " go to L" + contadorEtiquetas++ + "\n" + "go to L"+ contadorEtiquetas-- + "\n", new LinkedList<String>(Arrays.asList("L" + contadorEtiquetas++)), new LinkedList<String>(Arrays.asList("L" + contadorEtiquetas++)));}
+        |
+        <MENORIGUAL> <NUMERO>  {return new NodoLogico("if " + primerNumero + " <= " + token.image + " go to L" + contadorEtiquetas++ + "\n" + "go to L"+ contadorEtiquetas-- + "\n", new LinkedList<String>(Arrays.asList("L" + contadorEtiquetas++)), new LinkedList<String>(Arrays.asList("L" + contadorEtiquetas++)));}
+    )
+    |
+    <PARENI> e=Condition() <PAREND> {return e;}
+}
+
+/** Expresion -> ExpresionMultiplicativa ('+' ExpresionMultiplicativa)*
+              |  ExpresionMultiplicativa ('-' ExpresionMultiplicativa)*
+*/
+
+NodoAritmetico Expresion() :
+{NodoAritmetico e, e1;}
+{
+    e=ExpresionMultiplicativa()(
+          <MAS> e1=ExpresionMultiplicativa() {
+            codigoSalida = "T"+contadorTemporales + "=" + e.getTemp().getValorTemporal() + "+" + e1.getTemp().getValorTemporal() + "\n";
+                                            e = new NodoAritmetico(e.getCodigo() + e1.getCodigo() + codigoSalida, new Temporal(contadorTemporales++));}
+        | 
+        <MENOS> e1=ExpresionMultiplicativa() {codigoSalida = "T"+contadorTemporales + "=" + e.getTemp().getValorTemporal() + "-" + e1.getTemp().getValorTemporal() + "\n";  
+                                            e = new NodoAritmetico(e.getCodigo() + e1.getCodigo() + codigoSalida, new Temporal(contadorTemporales++));}
+    )*
+    {return e;}
+}
+
+/** ExpresionMultiplicativa -> ExpresionUnaria ('*' ExpresionUnaria)*
+                            |  ExpresionUnaria ('/' ExpresionUnaria)*
+*/
+NodoAritmetico ExpresionMultiplicativa() :
+{NodoAritmetico e, e1;}
+{
+    e=ExpresionUnaria()
+    (
+        <POR> e1=ExpresionUnaria() {codigoSalida = "T"+contadorTemporales + "=" + e.getTemp().getValorTemporal() + "*" + e1.getTemp().getValorTemporal() + "\n";  
+                                    e = new NodoAritmetico(e.getCodigo() + e1.getCodigo() + codigoSalida, new Temporal(contadorTemporales++));}
+        |
+        <DIV> e1=ExpresionUnaria() {codigoSalida = "T"+contadorTemporales + "=" + e.getTemp().getValorTemporal() + "/" + e1.getTemp().getValorTemporal() + "\n";  
+                                    e = new NodoAritmetico(e.getCodigo() + e1.getCodigo() + codigoSalida, new Temporal(contadorTemporales++));}
+    )*
+    {return e;}
+}
+
+/** ExpresionUnaria -> '-' ExpresionUnaria
+                    |  Primitivo
+ */
+NodoAritmetico ExpresionUnaria() :
+{NodoAritmetico e;}
+{
+    <MENOS> e=ExpresionUnaria() {
+        codigoSalida = "T"+contadorTemporales + "=" + "-" + e.getTemp().getValorTemporal() + "\n";
+        return new NodoAritmetico(e.getCodigo() + codigoSalida, new Temporal(contadorTemporales++));}
+    |
+    e=Primitivo() {return e;}
+}
+
+/** Primitivo -> Numero
+              |  Decimal
+              |  '(' Expresion ')' 
+*/
+NodoAritmetico Primitivo() :
+{NodoAritmetico e;}
+{
+    <NUMERO> {return new NodoAritmetico("", new Temporal((token.image)));}
+    |
+    <DECIMAL> {return new NodoAritmetico("", new Temporal((token.image)));}
+    |
+    <PARENI> e=Expresion() <PAREND> {return e;}
+}
